@@ -23,18 +23,77 @@ sw $s5, -24($fp)
 sw $s6, -28($fp)
 
 # Some temporary values
-sll $t0, $a1, 2
-addi $t1, $t0, 4
+sll $t0, $a1, 2 # 4 * row
+addi $t1, $t0, 4 # 4 * row + 4
+
+# Register allocation:
+# s0: Used for enumerating the stage number of decomposition.
+#     A LU decomposition process contains row_number steps.
+#
+# s1: The **address** of left-most and up-most element. It will
+# loop over diagonal elements of the matrix.
+#
+# s2: The right-end of the current decomposition stage, for example:
+#       3   4   5   6
+#         -----------
+#       6 | 7   8   3 #
+#         |
+#       9 | 1   2   2
+#         |
+#       1 | 2   3   5
+# 
+#           *
+#     For the given matrix, in the stage presented, the right-most element
+#     is 3 (r2c4). The bottom-most element (stored in s3) is 2(r4c2). So
+#     the right-end is the element after the right-most element --- the 
+#     address of #. The bottom end will be the address of *.
+# 
+# s3: The bottom-end of the current decomposition stage.
+#
+# s4: Current visiting element, for example, in this stage
+#       3   4   5   6
+#         -----------
+#       6 | 7   8   3
+#         |
+#       9 | 1   2   2
+#         |
+#       1 | 2   3   5
+#      When calculating U elements, the s4 loop over the address of 7 8 3
+#       3   4   5   6
+#         -----------
+#       6 |[7]  8   3
+#         |
+#       9 | 1   2   2
+#         |
+#       1 | 2   3   5
+#       to
+#       3   4   5   6
+#         -----------
+#       6 | 7  [8]  3
+#         |
+#       9 | 1   2   2
+#         |
+#       1 | 2   3   5
+#       to
+#       3   4   5   6
+#         -----------
+#       6 | 7   8  [3]
+#         |
+#       9 | 1   2   2
+#         |
+#       1 | 2   3   5
+#      When calculating L elements, s4 loops over the address of 1, 2.
+# s5, s6: For calculating the dot product which will be subbed from s4 
 
 # Initialize right_end and bottom_end
 mul $s2, $t0, $a2
-add $s2, $s2, $a0
-add $s3, $a0, $t0
+add $s2, $s2, $a0 # s2 = matrix_begin_addr + 4 * r * c
+add $s3, $a0, $t0 # s3 = 4(r + 1)
 
 # Main loop, enumerating the stage of decomposition
-add $s0, $zero, $zero
+add $s0, $zero, $zero # s0 = 0
 add $t3, $zero, $zero
-add $s1, $zero, $a0
+add $s1, $zero, $a0 # s1 = matrix_begin_addr
 
 slt $t7, $s0, $a1
 beq $t7, $zero, main_loop_Ex
@@ -84,7 +143,7 @@ u_loop_Ex:
 lwc1 $f4, 0($s1)
 
 # L loop
-add $s4, $zero, $s1
+addi $s4, $s1, 4
 
 beq $s4, $s3, l_loop_Ex
 l_loop:
